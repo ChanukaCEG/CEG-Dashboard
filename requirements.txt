@@ -4,4 +4,4 @@ openpyxl
 reportlab
 matplotlib
 pillow
-gdown
+requests

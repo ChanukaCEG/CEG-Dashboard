@@ -49,7 +49,8 @@ GDRIVE_FILE_ID = "11kqP7ybyCupBMjSTdFsiP2LpoSJ6KKJY"
 @st.cache_data
 def load_data():
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    gdown.download(id=GDRIVE_FILE_ID, output=tmp.name, quiet=True, fuzzy=True)
+    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}&confirm=t"
+    gdown.download(url, output=tmp.name, quiet=False, fuzzy=True)
     ile = pd.read_excel(tmp.name, sheet_name="ILE DATA")
     ile = ile[
         (ile["Entry_Type"] == "Purchase") &

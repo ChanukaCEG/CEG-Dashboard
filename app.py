@@ -11,6 +11,7 @@ import matplotlib.ticker as mticker
 import tempfile
 import os
 import requests
+import re
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -56,9 +57,20 @@ def load_data():
     for key, value in response.cookies.items():
         if key.startswith("download_warning"):
             token = value
+    if not token:
+        for key, value in response.cookies.items():
+            if "warning" in key.lower():
+                token = value
+    if not token:
+        content = response.content.decode("utf-8", errors="ignore")
+        match = re.search(r'confirm=([0-9A-Za-z_]+)', content)
+        if match:
+            token = match.group(1)
     if token:
         url = f"https://drive.google.com/uc?export=download&confirm={token}&id={GDRIVE_FILE_ID}"
-        response = session.get(url, stream=True)
+    else:
+        url = f"https://drive.google.com/uc?export=download&confirm=t&id={GDRIVE_FILE_ID}"
+    response = session.get(url, stream=True)
     with open(tmp.name, "wb") as f:
         for chunk in response.iter_content(32768):
             if chunk:

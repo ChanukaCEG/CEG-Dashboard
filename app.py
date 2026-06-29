@@ -8,9 +8,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import gdown
 import tempfile
 import os
+import requests
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -49,8 +49,20 @@ GDRIVE_FILE_ID = "11kqP7ybyCupBMjSTdFsiP2LpoSJ6KKJY"
 @st.cache_data
 def load_data():
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}&confirm=t"
-    gdown.download(url, output=tmp.name, quiet=False, fuzzy=True)
+    session = requests.Session()
+    url = f"https://drive.google.com/uc?export=download&id={GDRIVE_FILE_ID}"
+    response = session.get(url, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            token = value
+    if token:
+        url = f"https://drive.google.com/uc?export=download&confirm={token}&id={GDRIVE_FILE_ID}"
+        response = session.get(url, stream=True)
+    with open(tmp.name, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
     ile = pd.read_excel(tmp.name, sheet_name="ILE DATA")
     ile = ile[
         (ile["Entry_Type"] == "Purchase") &

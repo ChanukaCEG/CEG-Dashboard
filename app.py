@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import json
 import io
+import os
+import tempfile
 import base64 as b64lib
 from datetime import datetime
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import gdown
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -22,6 +25,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 st.set_page_config(page_title="CEG Vendor Purchase Analysis", layout="wide")
+
 
 def check_password():
     def password_entered():
@@ -43,6 +47,7 @@ def check_password():
 
 check_password()
 
+
 import os as _os
 _LOGO_B64 = ""
 _logo_src = "ceg_logo.png"
@@ -63,11 +68,26 @@ COL = {
 
 # ── Google Drive file ID ──────────────────────────────────────
 GDRIVE_FILE_ID = "11kqP7ybyCupBMjSTdFsiP2LpoSJ6KKJY"
-GDRIVE_URL = f"https://drive.google.com/uc?export=download&id={GDRIVE_FILE_ID}"
 
 @st.cache_data
 def load_data():
-    ile = pd.read_excel(GDRIVE_URL, sheet_name="ILE DATA")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    tmp.close()
+
+    gdrive_url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+    try:
+        gdown.download(gdrive_url, tmp.name, quiet=False, fuzzy=True)
+    except Exception as e:
+        st.error(f"❌ Failed to download data file from Google Drive: {e}")
+        st.stop()
+
+    with open(tmp.name, "rb") as f:
+        header = f.read(8)
+    if header[:4] != b'PK\x03\x04':
+        st.error("❌ Downloaded file is not a valid Excel file. Check Google Drive sharing settings (must be 'Anyone with the link').")
+        st.stop()
+
+    ile = pd.read_excel(tmp.name, sheet_name="ILE DATA")
     ile = ile[
         (ile["Entry_Type"] == "Purchase") &
         (ile["Document_Type"].isin(["Purchase Receipt","Purchase Return Shipment"]))
@@ -82,11 +102,14 @@ def load_data():
     ile["Year"]         = ile["Posting_Date"].dt.year
     ile["YearMonth"]    = ile["Posting_Date"].dt.to_period("M").astype(str)
     ile["Month"]        = ile["Posting_Date"].dt.month
-    vendors = pd.read_excel(GDRIVE_URL, sheet_name="VENDOR CARD")
+
+    vendors = pd.read_excel(tmp.name, sheet_name="VENDOR CARD")
     vendors = vendors[["No","Name"]].rename(
         columns={"No":"Vendor_Code","Name":"Vendor_Name"})
     ile = ile.merge(vendors, left_on="Source_No",
                     right_on="Vendor_Code", how="left")
+
+    os.unlink(tmp.name)
     return ile, vendors
 
 ile_df, vendor_df = load_data()

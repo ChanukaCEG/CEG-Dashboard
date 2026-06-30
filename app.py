@@ -76,7 +76,7 @@ def load_data():
 
     gdrive_url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
     try:
-        gdown.download(gdrive_url, tmp.name, quiet=False, fuzzy=True)
+        gdown.download(gdrive_url, tmp.name, quiet=False)
     except Exception as e:
         st.error(f"❌ Failed to download data file from Google Drive: {e}")
         st.stop()

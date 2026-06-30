@@ -8,10 +8,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import tempfile
-import os
-import requests
-import re
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -26,6 +22,26 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 st.set_page_config(page_title="CEG Vendor Purchase Analysis", layout="wide")
+
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.markdown("<h2 style='text-align:center; color:#1F3864;'>🔒 CEG Vendor Purchase Analysis</h2>", unsafe_allow_html=True)
+        st.text_input("Enter password", type="password", on_change=password_entered, key="password")
+        st.stop()
+    elif not st.session_state["password_correct"]:
+        st.markdown("<h2 style='text-align:center; color:#1F3864;'>🔒 CEG Vendor Purchase Analysis</h2>", unsafe_allow_html=True)
+        st.text_input("Enter password", type="password", on_change=password_entered, key="password")
+        st.error("😕 Incorrect password")
+        st.stop()
+
+check_password()
 
 import os as _os
 _LOGO_B64 = ""
@@ -45,37 +61,13 @@ COL = {
     "yrt":"AED6F1","tot":"C0C0C0",
 }
 
+# ── Google Drive file ID ──────────────────────────────────────
 GDRIVE_FILE_ID = "11kqP7ybyCupBMjSTdFsiP2LpoSJ6KKJY"
+GDRIVE_URL = f"https://drive.google.com/uc?export=download&id={GDRIVE_FILE_ID}"
 
 @st.cache_data
 def load_data():
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    session = requests.Session()
-    url = f"https://drive.google.com/uc?export=download&id={GDRIVE_FILE_ID}"
-    response = session.get(url, stream=True)
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith("download_warning"):
-            token = value
-    if not token:
-        for key, value in response.cookies.items():
-            if "warning" in key.lower():
-                token = value
-    if not token:
-        content = response.content.decode("utf-8", errors="ignore")
-        match = re.search(r'confirm=([0-9A-Za-z_]+)', content)
-        if match:
-            token = match.group(1)
-    if token:
-        url = f"https://drive.google.com/uc?export=download&confirm={token}&id={GDRIVE_FILE_ID}"
-    else:
-        url = f"https://drive.google.com/uc?export=download&confirm=t&id={GDRIVE_FILE_ID}"
-    response = session.get(url, stream=True)
-    with open(tmp.name, "wb") as f:
-        for chunk in response.iter_content(32768):
-            if chunk:
-                f.write(chunk)
-    ile = pd.read_excel(tmp.name, sheet_name="ILE DATA")
+    ile = pd.read_excel(GDRIVE_URL, sheet_name="ILE DATA")
     ile = ile[
         (ile["Entry_Type"] == "Purchase") &
         (ile["Document_Type"].isin(["Purchase Receipt","Purchase Return Shipment"]))
@@ -90,12 +82,11 @@ def load_data():
     ile["Year"]         = ile["Posting_Date"].dt.year
     ile["YearMonth"]    = ile["Posting_Date"].dt.to_period("M").astype(str)
     ile["Month"]        = ile["Posting_Date"].dt.month
-    vendors = pd.read_excel(tmp.name, sheet_name="VENDOR CARD")
+    vendors = pd.read_excel(GDRIVE_URL, sheet_name="VENDOR CARD")
     vendors = vendors[["No","Name"]].rename(
         columns={"No":"Vendor_Code","Name":"Vendor_Name"})
     ile = ile.merge(vendors, left_on="Source_No",
                     right_on="Vendor_Code", how="left")
-    os.unlink(tmp.name)
     return ile, vendors
 
 ile_df, vendor_df = load_data()
@@ -308,6 +299,7 @@ data_json = json.dumps({
     "charts": chart_data,
 }, default=str)
 
+# ── Matplotlib chart image ────────────────────────────────────
 COST_COLORS_MPL = ['#1F3864','#85B7EB','#4A235A','#005F73','#1A5276']
 QTY_COLORS_MPL  = ['#1B5E20','#66BB6A','#2E7D32','#A5D6A7','#388E3C']
 POS_COLORS_MPL  = ['#E65100','#EF9A9A','#BF360C','#FFCCBC','#FF6D00']
@@ -345,6 +337,7 @@ def make_chart_image(title, metric, color_list, hdr_color, cd):
     buf.seek(0)
     return buf
 
+# ── Excel helpers ─────────────────────────────────────────────
 def xl_fill(hex_col):
     return PatternFill("solid", fgColor=hex_col)
 thin  = Side(style="thin", color="AAAAAA")
@@ -697,6 +690,7 @@ def build_pdf(tbl_sel,e1,e2,e3,e4,e5,tot1,tot2,tot3,tot4,tot5):
     buf.seek(0)
     return bytes(buf.getvalue())
 
+# ── Export trigger ────────────────────────────────────────────
 if do_export:
     if not export_tables:
         st.warning("Please select at least one table.")
@@ -725,6 +719,7 @@ if do_export:
             st.session_state.pdf_fname = f"CEG_{vn}_{yr}_{ts}.pdf"
             st.session_state.pdf_ready = True
 
+# ── Download buttons ──────────────────────────────────────────
 if st.session_state.xl_ready and st.session_state.xl_data:
     xl_b64 = b64lib.b64encode(st.session_state.xl_data).decode()
     xl_fname = st.session_state.xl_fname
@@ -759,6 +754,7 @@ if st.session_state.pdf_ready and st.session_state.pdf_data:
         st.session_state.pdf_data  = None
         st.rerun()
 
+# ── Dashboard HTML ────────────────────────────────────────────
 html_content = """
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
